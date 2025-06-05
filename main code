@@ -1,0 +1,98 @@
+// === EXTENDED CLIENT: src/App.jsx WITH VOLUME CONTROL ===
+import { useEffect, useState, useRef } from "react";
+import io from "socket.io-client";
+import Game from "./Game";
+
+const socket = io("http://localhost:3001");
+
+function App() {
+  const [name, setName] = useState("");
+  const [joined, setJoined] = useState(false);
+  const [volume, setVolume] = useState(50); // 0 to 100
+
+  const bgmRef = useRef(null);
+  const sfx = {
+    submit: useRef(null),
+    correct: useRef(null),
+    wrong: useRef(null),
+  };
+
+  useEffect(() => {
+    const vol = volume / 100;
+    if (bgmRef.current) bgmRef.current.volume = vol;
+    Object.values(sfx).forEach(ref => {
+      if (ref.current) ref.current.volume = vol;
+    });
+  }, [volume]);
+
+  useEffect(() => {
+    if (joined && bgmRef.current) {
+      bgmRef.current.loop = true;
+      bgmRef.current.play();
+    }
+
+    socket.on("scores", (scoreObj) => {
+      const player = name;
+      const scoreChange = scoreObj[player] - (window.lastScore || 0);
+      if (scoreChange >= 1000) sfx.correct.current.play();
+      else if (scoreChange > 0) sfx.wrong.current.play();
+      window.lastScore = scoreObj[player];
+    });
+
+    return () => socket.disconnect();
+  }, [joined]);
+
+  const handleJoin = () => {
+    if (name.trim()) {
+      socket.emit("join", name);
+      setJoined(true);
+    }
+  };
+
+  const handleSubmitSound = () => {
+    sfx.submit.current.play();
+  };
+
+  return (
+    <div className="p-4 text-white bg-gray-900 min-h-screen">
+      <audio ref={bgmRef} src="http://localhost:3001/uploads/music/bgm.mp3" />
+      <audio ref={sfx.submit} src="http://localhost:3001/uploads/sfx/submit.wav" />
+      <audio ref={sfx.correct} src="http://localhost:3001/uploads/sfx/correct.wav" />
+      <audio ref={sfx.wrong} src="http://localhost:3001/uploads/sfx/wrong.wav" />
+
+      <div className="mb-4">
+        <label className="block mb-1">Volume: {volume}%</label>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          className="w-full"
+        />
+      </div>
+
+      {!joined ? (
+        <div className="space-y-4">
+          <h1 className="text-3xl font-bold">Custom Fibbage</h1>
+          <input
+            className="p-2 text-black"
+            placeholder="Enter your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button
+            onClick={handleJoin}
+            className="px-4 py-2 bg-green-600 rounded hover:bg-green-700"
+          >
+            Join Game
+          </button>
+        </div>
+      ) : (
+        <Game socket={socket} name={name} onSubmitSound={handleSubmitSound} />
+      )}
+    </div>
+  );
+}
+
+export default App;
